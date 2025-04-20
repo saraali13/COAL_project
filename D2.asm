@@ -1,6 +1,7 @@
-INCLUDE Irvine32.inc
-INCLUDELIB winmm.lib
+INCLUDE Irvine32.inc 
+INCLUDELIB winmm.lib ;for sound playback
 INCLUDE macros.inc
+INCLUDELIB kernel32.lib 
 
 ; Prototype for PlaySound
 PlaySound PROTO,
@@ -10,6 +11,8 @@ PlaySound PROTO,
 
 ; Prototype for Windows API functions
 GetStdHandle PROTO, nStdHandle:DWORD
+
+;Prototype for cursor positioning 
 SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
 
 .data
@@ -28,6 +31,7 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
     alarmFlag  DWORD 0       ; 0 = Off, 1 = On
     snoozeFlag DWORD 0       ; 0 = No snooze, 1 = Snoozed
     snoozeMin  DWORD 2       ; 2 minutes snooze duration
+    msgDelayTime DWORD 2000  ; 2 seconds delay for messages
 
     ; Sound constants
     SND_ALIAS     EQU 00010000h
@@ -52,22 +56,39 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
     colonStr          BYTE ":", 0
     timeFormatError   BYTE "Error: Could not get system time", 0
 
+    ; Color constants
+    COLOR_NORMAL      = white + (black * 16)    ; White text on black background
+    COLOR_TIME        = lightGray + (black * 16)
+    COLOR_LABEL       = yellow + (black * 16)
+    COLOR_PROMPT      = cyan + (black * 16)
+    COLOR_ALARM       = lightRed + (black * 16)
+    COLOR_SNOOZE      = lightGreen + (black * 16)
+    COLOR_STOP        = lightBlue + (black * 16)
+    COLOR_ERROR       = red + (black * 16)
+
 .code
 main PROC
-    ; Get console handle for output
+    ;Initialize console for output
     INVOKE GetStdHandle, STD_OUTPUT_HANDLE
     mov hStdOut, eax
 
     ; Set initial cursor position
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
 
+    ; Set default color
+    mov eax, COLOR_NORMAL
+    call SetTextColor
+
     ; Input alarm time with validation
     call InputAlarmTime
 
-    ; Display initial time label
+    ; Display initial time label with color
+    mov eax, COLOR_LABEL
+    call SetTextColor
     mov edx, OFFSET timeLabel
     call WriteString
 
+;main clock loop
 START_CLOCK:
     ; Read current time
     call GetCurrentTime
@@ -92,8 +113,17 @@ main ENDP
 ; Update Time Display
 ; =======================
 UpdateTimeDisplay PROC
+    ; Save current cursor position
+    push cursorPos.X
+    push cursorPos.Y
+    
+    ; Set color for time display
+    mov eax, COLOR_TIME
+    call SetTextColor
+    
     ; Set cursor position after "Time: "
     mov cursorPos.X, 6
+    mov cursorPos.Y, 0
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     
     ; Display hours
@@ -135,6 +165,11 @@ MinuteTwoDigit:
 SecondTwoDigit:
     call WriteDec
     
+    ; Restore cursor position
+    pop cursorPos.Y
+    pop cursorPos.X
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    
     ret
 UpdateTimeDisplay ENDP
 
@@ -146,6 +181,10 @@ InputAlarmTime PROC
     mov cursorPos.X, 0
     mov cursorPos.Y, 1
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+
+    ; Set prompt color
+    mov eax, COLOR_PROMPT
+    call SetTextColor
 
 HourInput:
     mov edx, OFFSET promptAlarmHour
@@ -196,6 +235,11 @@ ClearLoop2:
 
     mov alarmFlag, 1
     mov snoozeFlag, 0
+    
+    ; Restore normal color
+    mov eax, COLOR_NORMAL
+    call SetTextColor
+    
     ret
 InputAlarmTime ENDP
 
@@ -241,6 +285,10 @@ GetCurrentTime ENDP
 ; Handle Snooze Time
 ; =======================
 HandleSnooze PROC
+    ; Save current cursor position
+    push cursorPos.X
+    push cursorPos.Y
+    
     ; Add snooze minutes to alarm time
     mov eax, alarmMin
     add eax, snoozeMin
@@ -266,7 +314,42 @@ SnoozeDone:
     ; Play snooze sound
     INVOKE PlaySound, OFFSET snoozeSoundFile, 0, SND_FILENAME + SND_ASYNC
     
+    ; Set snooze message color
+    mov eax, COLOR_SNOOZE
+    call SetTextColor
+    
+    ; Display snooze message
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 3
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    mov edx, OFFSET snoozeMsg
+    call WriteString
+    
     mov snoozeFlag, 0
+    
+    ; Delay to show message
+    mov eax, msgDelayTime
+    call Delay
+    
+    ; Clear snooze message
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 3
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    mov ecx, 60
+ClearSnooze:
+    mov al, ' '
+    call WriteChar
+    loop ClearSnooze
+    
+    ; Restore cursor position
+    pop cursorPos.Y
+    pop cursorPos.X
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    
+    ; Restore normal color
+    mov eax, COLOR_NORMAL
+    call SetTextColor
+    
     ret
 HandleSnooze ENDP
 
@@ -300,10 +383,18 @@ CheckAlarm ENDP
 ; Trigger Alarm with Sound
 ; =======================
 TriggerAlarm PROC
+    ; Save current cursor position
+    push cursorPos.X
+    push cursorPos.Y
+    
     ; Play alarm sound
     INVOKE PlaySound, OFFSET alarmSoundFile, 0, SND_FILENAME + SND_ASYNC + SND_LOOP
     
 AlarmLoop:
+    ; Set alarm message color
+    mov eax, COLOR_ALARM
+    call SetTextColor
+    
     ; Display message
     mov cursorPos.X, 0
     mov cursorPos.Y, 2
@@ -320,7 +411,10 @@ AlarmLoop:
     cmp eax, 2
     je StopAlarm
     
-    ; Invalid input
+    ; Invalid input - set error color
+    mov eax, COLOR_ERROR
+    call SetTextColor
+    
     mov edx, OFFSET invalidInputMsg
     call WriteString
     call Crlf
@@ -331,16 +425,22 @@ SnoozeAlarm:
     mov cursorPos.X, 0
     mov cursorPos.Y, 3
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    
+    ; Set snooze message color
+    mov eax, COLOR_SNOOZE
+    call SetTextColor
+    
     mov edx, OFFSET snoozeMsg
     call WriteString
-    call Crlf
     
     ; Stop the alarm sound
     INVOKE PlaySound, 0, 0, SND_PURGE
     
     ; Play confirmation beep
     INVOKE PlaySound, OFFSET beepSoundFile, 0, SND_FILENAME + SND_ASYNC
-    
+    mov eax, msgDelayTime
+    call Delay
+
     ; Clear alarm message lines
     mov cursorPos.X, 0
     mov cursorPos.Y, 2
@@ -360,10 +460,14 @@ ClearSnoozeMsg:
     call WriteChar
     loop ClearSnoozeMsg
     
-    ; Reset cursor to time position
-    mov cursorPos.X, 6
-    mov cursorPos.Y, 0
+    ; Restore cursor position
+    pop cursorPos.Y
+    pop cursorPos.X
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    
+    ; Restore normal color
+    mov eax, COLOR_NORMAL
+    call SetTextColor
     
     jmp EndAlarm
     
@@ -372,13 +476,19 @@ StopAlarm:
     mov cursorPos.X, 0
     mov cursorPos.Y, 3
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    
+    ; Set stop message color
+    mov eax, COLOR_STOP
+    call SetTextColor
+    
     mov edx, OFFSET stopMsg
     call WriteString
-    call Crlf
     
     ; Stop the alarm sound
     INVOKE PlaySound, 0, 0, SND_PURGE
-    
+    mov eax, msgDelayTime
+    call Delay
+
     ; Clear alarm message lines
     mov cursorPos.X, 0
     mov cursorPos.Y, 2
@@ -398,10 +508,14 @@ ClearStopMsg:
     call WriteChar
     loop ClearStopMsg
     
-    ; Reset cursor to time position
-    mov cursorPos.X, 6
-    mov cursorPos.Y, 0
+    ; Restore cursor position
+    pop cursorPos.Y
+    pop cursorPos.X
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    
+    ; Restore normal color
+    mov eax, COLOR_NORMAL
+    call SetTextColor
     
 EndAlarm:
     ret
