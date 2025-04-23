@@ -31,7 +31,7 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
     alarmFlag  DWORD 0       ; 0 = Off, 1 = On
     snoozeFlag DWORD 0       ; 0 = No snooze, 1 = Snoozed
     snoozeMin  DWORD 2       ; 2 minutes snooze duration
-    msgDelayTime DWORD 3000  ; 2 seconds delay for messages
+    msgDelayTime DWORD 3000  ; 3 seconds delay for messages
 
     ; Sound constants
     SND_ALIAS     EQU 00010000h
@@ -55,6 +55,7 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
     timeLabel         BYTE "Time: ", 0
     colonStr          BYTE ":", 0
     timeFormatError   BYTE "Error: Could not get system time", 0
+    blankLine         BYTE "                                                            ", 0
 
     ; Color constants
     COLOR_NORMAL      = white + (black * 16)    ; White text on black background
@@ -190,12 +191,43 @@ HourInput:
     mov edx, OFFSET promptAlarmHour
     call WriteString
     call ReadInt
+    jno ValidHour   ; Check for overflow
+    jmp InvalidHour
+    
+ValidHour:
     cmp eax, 0
-    jl HourInput
+    jl InvalidHour
     cmp eax, 23
-    jg HourInput
+    jg InvalidHour
     mov alarmHour, eax
-
+    jmp MinutePrompt
+    
+InvalidHour:
+    ; Display error message
+    mov eax, COLOR_ERROR
+    call SetTextColor
+    mov edx, OFFSET invalidInputMsg
+    call WriteString
+    call Crlf
+    ; Reset cursor position
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 1
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    ; Clear the line
+    mov ecx, 60
+ClearHourLine:
+    mov al, ' '
+    call WriteChar
+    loop ClearHourLine
+    ; Reset cursor and try again
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 1
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    mov eax, COLOR_PROMPT
+    call SetTextColor
+    jmp HourInput
+    
+MinutePrompt:
     ; Move to next line for minute input
     inc cursorPos.Y
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
@@ -204,12 +236,43 @@ MinuteInput:
     mov edx, OFFSET promptAlarmMin
     call WriteString
     call ReadInt
+    jno ValidMinute   ; Check for overflow
+    jmp InvalidMinute
+    
+ValidMinute:
     cmp eax, 0
-    jl MinuteInput
+    jl InvalidMinute
     cmp eax, 59
-    jg MinuteInput
+    jg InvalidMinute
     mov alarmMin, eax
-
+    jmp InputComplete
+    
+InvalidMinute:
+    ; Display error message
+    mov eax, COLOR_ERROR
+    call SetTextColor
+    mov edx, OFFSET invalidInputMsg
+    call WriteString
+    call Crlf
+    ; Reset cursor position
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 2
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    ; Clear the line
+    mov ecx, 60
+ClearMinuteLine:
+    mov al, ' '
+    call WriteChar
+    loop ClearMinuteLine
+    ; Reset cursor and try again
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 2
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    mov eax, COLOR_PROMPT
+    call SetTextColor
+    jmp MinuteInput
+    
+InputComplete:
     ; Clear input lines
     mov cursorPos.X, 0
     mov cursorPos.Y, 1
@@ -247,30 +310,20 @@ InputAlarmTime ENDP
 ; Get Current Time
 ; =======================
 GetCurrentTime PROC
+    LOCAL sysTime:SYSTEMTIME
+    
     ; Get system time
-    mov eax, 0
-    call GetMseconds
+    INVOKE GetLocalTime, ADDR sysTime
     
-    ; Convert to seconds
-    mov ebx, 1000
-    xor edx, edx
-    div ebx
-    
-    ; Calculate hours
-    mov ebx, 3600
-    xor edx, edx
-    div ebx
+    ; Store time components
+    movzx eax, sysTime.wHour
     mov currHour, eax
     
-    ; Calculate minutes
-    mov eax, edx
-    mov ebx, 60
-    xor edx, edx
-    div ebx
+    movzx eax, sysTime.wMinute
     mov currMin, eax
     
-    ; Remaining seconds
-    mov currSec, edx
+    movzx eax, sysTime.wSecond
+    mov currSec, eax
     
     ; Handle snooze time if active
     cmp snoozeFlag, 1
@@ -314,7 +367,6 @@ SnoozeDone:
     ; Play snooze sound
     INVOKE PlaySound, OFFSET snoozeSoundFile, 0, SND_FILENAME + SND_ASYNC
     
-    
     ; Display snooze message
     mov cursorPos.X, 0
     mov cursorPos.Y, 3
@@ -322,7 +374,6 @@ SnoozeDone:
     
     mov snoozeFlag, 0
     
-    ; Clear snooze message
     mov cursorPos.X, 0
     mov cursorPos.Y, 3
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
@@ -405,10 +456,23 @@ AlarmLoop:
     ; Invalid input - set error color
     mov eax, COLOR_ERROR
     call SetTextColor
-    
+
+    ; Display invalid input message
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 5             ; Choose a clear line for this message
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov edx, OFFSET invalidInputMsg
     call WriteString
-    call Crlf
+    
+    ; Clear the invalid input message before next loop
+    mov eax, msgDelayTime
+    call Delay
+    mov cursorPos.X, 0
+    mov cursorPos.Y, 5             ; Same Y position
+    INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
+    mov edx, OFFSET blankLine
+    call WriteString
+    
     jmp AlarmLoop
     
 SnoozeAlarm:
