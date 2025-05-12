@@ -69,6 +69,7 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
 
 .code
 main PROC
+
     ;Initialize console for output
     INVOKE GetStdHandle, STD_OUTPUT_HANDLE
     mov hStdOut, eax
@@ -135,6 +136,7 @@ UpdateTimeDisplay PROC
     mov eax, 0
     call WriteDec
     pop eax
+
 HourTwoDigit:
     call WriteDec
     
@@ -149,6 +151,7 @@ HourTwoDigit:
     mov eax, 0
     call WriteDec
     pop eax
+
 MinuteTwoDigit:
     call WriteDec
     
@@ -163,6 +166,7 @@ MinuteTwoDigit:
     mov eax, 0
     call WriteDec
     pop eax
+
 SecondTwoDigit:
     call WriteDec
     
@@ -215,6 +219,7 @@ InvalidHour:
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     ; Clear the line
     mov ecx, 60
+
 ClearHourLine:
     mov al, ' '
     call WriteChar
@@ -260,6 +265,7 @@ InvalidMinute:
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     ; Clear the line
     mov ecx, 60
+
 ClearMinuteLine:
     mov al, ' '
     call WriteChar
@@ -278,6 +284,7 @@ InputComplete:
     mov cursorPos.Y, 1
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearLoop:
     mov al, ' '
     call WriteChar
@@ -286,6 +293,7 @@ ClearLoop:
     inc cursorPos.Y
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearLoop2:
     mov al, ' '
     call WriteChar
@@ -356,6 +364,7 @@ HandleSnooze PROC
     cmp eax, 24
     jl NoDayAdjust
     sub eax, 24
+
 NoDayAdjust:
     mov alarmHour, eax
     jmp SnoozeDone
@@ -378,6 +387,7 @@ SnoozeDone:
     mov cursorPos.Y, 3
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearSnooze:
     mov al, ' '
     call WriteChar
@@ -501,6 +511,7 @@ SnoozeAlarm:
     mov cursorPos.Y, 2
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearAlarmMsg:
     mov al, ' '
     call WriteChar
@@ -510,6 +521,7 @@ ClearAlarmMsg:
     mov cursorPos.Y, 3
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearSnoozeMsg:
     mov al, ' '
     call WriteChar
@@ -549,6 +561,7 @@ StopAlarm:
     mov cursorPos.Y, 2
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearAlarmMsg2:
     mov al, ' '
     call WriteChar
@@ -558,6 +571,7 @@ ClearAlarmMsg2:
     mov cursorPos.Y, 3
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
     mov ecx, 60
+
 ClearStopMsg:
     mov al, ' '
     call WriteChar
