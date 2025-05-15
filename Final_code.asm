@@ -1,25 +1,27 @@
 INCLUDE Irvine32.inc 
-INCLUDELIB winmm.lib ;for sound playback
-INCLUDE macros.inc
-INCLUDELIB kernel32.lib 
+INCLUDE macros.inc 
+INCLUDELIB winmm.lib        ;for sound playback API 
+INCLUDELIB kernel32.lib     ;for accessing windows API and time 
+
 
 ; Prototype for PlaySound
 PlaySound PROTO,
-    pszSound:PTR BYTE,
-    hmod:DWORD,
-    fdwSound:DWORD
+    pszSound:PTR BYTE,      ;pointer to sound file
+    hmod:DWORD,             ;module for sound handle (0)
+    fdwSound:DWORD          ;flag for sound playback behavior 
 
 ; Prototype for Windows API functions
-GetStdHandle PROTO, nStdHandle:DWORD
+GetStdHandle PROTO, nStdHandle:DWORD        ;return console output handle
 
 ;Prototype for cursor positioning 
-SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
+SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD   
 
 .data
-    ; COORD structure for cursor positioning
-    cursorPos COORD <6,0>  ; X,Y position for time display
 
-    ; Console handles
+    ; COORD structure for cursor positioning
+    cursorPos COORD <6,0>       ; X,Y position for time display
+
+    ; Console output handle
     hStdOut DWORD ?
 
     ; Time variables
@@ -28,39 +30,37 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
     currSec    DWORD ?
     alarmHour  DWORD ?
     alarmMin   DWORD ?
-    alarmFlag  DWORD 0       ; 0 = Off, 1 = On
-    snoozeFlag DWORD 0       ; 0 = No snooze, 1 = Snoozed
-    snoozeMin  DWORD 2       ; 2 minutes snooze duration
-    msgDelayTime DWORD 3000  ; 3 seconds delay for messages
+    alarmFlag  DWORD 0          ; 0 = Off, 1 = On
+    snoozeFlag DWORD 0          ; 0 = No snooze, 1 = Snoozed
+    snoozeMin  DWORD 2          ; 2 minutes snooze duration
+    msgDelayTime DWORD 3000     ; 3 seconds delay for messages
 
-    ; Sound constants
-    SND_ALIAS     EQU 00010000h
-    SND_ASYNC     EQU 00000001h
-    SND_FILENAME  EQU 00020000h
-    SND_LOOP      EQU 00000008h
-    SND_PURGE     EQU 00000040h
+    ; Sound constants or flags
+    SND_ALIAS     EQU 00010000h     ;sound resorces
+    SND_ASYNC     EQU 00000001h     ;play sound without blockage
+    SND_FILENAME  EQU 00020000h     ;File name for sound
+    SND_LOOP      EQU 00000008h     ;play sound untill stoped
+    SND_PURGE     EQU 00000040h     ;stop all instances of sound
     
     ; Sound files
     alarmSoundFile BYTE "alarm.wav",0
     beepSoundFile  BYTE "beep.wav",0
-    snoozeSoundFile BYTE "snooze.wav",0
+    snoozeSoundFile BYTE "alarm.wav",0
     
     ; Messages
     promptAlarmHour   BYTE "Enter Alarm Hour (0-23): ", 0
     promptAlarmMin    BYTE "Enter Alarm Minute (0-59): ", 0
-    alarmTriggeredMsg BYTE "ALARM TRIGGERED! Press 1 to Snooze, 2 to Stop: ", 0
-    snoozeMsg         BYTE "Alarm Snoozed for 2 minutes", 0
-    stopMsg           BYTE "Alarm Stopped", 0
+    alarmTriggeredMsg BYTE "ALARM TRIGGERED!! Press 1 to Snooze, 2 to Stop: ", 0
+    snoozeMsg         BYTE "Alarm Snoozed for 2 minutes...", 0
+    stopMsg           BYTE "Alarm Stopped...", 0
     invalidInputMsg   BYTE "Invalid input! Please try again.", 0
-    timeLabel         BYTE "Time: ", 0
     colonStr          BYTE ":", 0
     timeFormatError   BYTE "Error: Could not get system time", 0
     blankLine         BYTE "                                                            ", 0
 
     ; Color constants
-    COLOR_NORMAL      = white + (black * 16)    ; White text on black background
+    COLOR_NORMAL      = white + (black * 16)        ; White text on black background
     COLOR_TIME        = lightGray + (black * 16)
-    COLOR_LABEL       = yellow + (black * 16)
     COLOR_PROMPT      = cyan + (black * 16)
     COLOR_ALARM       = lightRed + (black * 16)
     COLOR_SNOOZE      = lightGreen + (black * 16)
@@ -68,10 +68,10 @@ SetConsoleCursorPosition PROTO, hConsoleOutput:DWORD, dwCursorPosition:COORD
     COLOR_ERROR       = red + (black * 16)
 
 .code
-main PROC
 
+main PROC
     ;Initialize console for output
-    INVOKE GetStdHandle, STD_OUTPUT_HANDLE
+    INVOKE GetStdHandle, STD_OUTPUT_HANDLE      ;return console output handle
     mov hStdOut, eax
 
     ; Set initial cursor position
@@ -84,13 +84,8 @@ main PROC
     ; Input alarm time with validation
     call InputAlarmTime
 
-    ; Display initial time label with color
-    mov eax, COLOR_LABEL
-    call SetTextColor
-    mov edx, OFFSET timeLabel
-    call WriteString
 
-;main clock loop
+;main clock loop (infinite loop)
 START_CLOCK:
     ; Read current time
     call GetCurrentTime
@@ -111,6 +106,36 @@ START_CLOCK:
     exit
 main ENDP
 
+
+; =======================
+; Get Current Time
+; =======================
+GetCurrentTime PROC
+    LOCAL sysTime:SYSTEMTIME   ;SYSTEMTIME structure stores all the system time componets
+    
+    ; Get system time
+    INVOKE GetLocalTime, ADDR sysTime
+    
+    ; Store time components
+    movzx eax, sysTime.wHour    ;wHour--hour component of the system time
+    mov currHour, eax
+    
+    movzx eax, sysTime.wMinute
+    mov currMin, eax
+    
+    movzx eax, sysTime.wSecond
+    mov currSec, eax
+    
+    ; Handle snooze time if active
+    cmp snoozeFlag, 1
+    jne NoSnooze
+    call HandleSnooze
+    
+NoSnooze:
+    ret
+GetCurrentTime ENDP
+
+
 ; =======================
 ; Update Time Display
 ; =======================
@@ -123,7 +148,7 @@ UpdateTimeDisplay PROC
     mov eax, COLOR_TIME
     call SetTextColor
     
-    ; Set cursor position after "Time: "
+    ; Set cursor position 
     mov cursorPos.X, 6
     mov cursorPos.Y, 0
     INVOKE SetConsoleCursorPosition, hStdOut, cursorPos
@@ -178,6 +203,7 @@ SecondTwoDigit:
     ret
 UpdateTimeDisplay ENDP
 
+
 ; =======================
 ; Input Alarm Time
 ; =======================
@@ -207,12 +233,6 @@ ValidHour:
     jmp MinutePrompt
     
 InvalidHour:
-    ; Display error message
-    mov eax, COLOR_ERROR
-    call SetTextColor
-    mov edx, OFFSET invalidInputMsg
-    call WriteString
-    call Crlf
     ; Reset cursor position
     mov cursorPos.X, 0
     mov cursorPos.Y, 1
@@ -253,12 +273,6 @@ ValidMinute:
     jmp InputComplete
     
 InvalidMinute:
-    ; Display error message
-    mov eax, COLOR_ERROR
-    call SetTextColor
-    mov edx, OFFSET invalidInputMsg
-    call WriteString
-    call Crlf
     ; Reset cursor position
     mov cursorPos.X, 0
     mov cursorPos.Y, 2
@@ -315,34 +329,6 @@ ClearLoop2:
 InputAlarmTime ENDP
 
 ; =======================
-; Get Current Time
-; =======================
-GetCurrentTime PROC
-    LOCAL sysTime:SYSTEMTIME
-    
-    ; Get system time
-    INVOKE GetLocalTime, ADDR sysTime
-    
-    ; Store time components
-    movzx eax, sysTime.wHour
-    mov currHour, eax
-    
-    movzx eax, sysTime.wMinute
-    mov currMin, eax
-    
-    movzx eax, sysTime.wSecond
-    mov currSec, eax
-    
-    ; Handle snooze time if active
-    cmp snoozeFlag, 1
-    jne NoSnooze
-    call HandleSnooze
-    
-NoSnooze:
-    ret
-GetCurrentTime ENDP
-
-; =======================
 ; Handle Snooze Time
 ; =======================
 HandleSnooze PROC
@@ -362,10 +348,10 @@ HandleSnooze PROC
     mov eax, alarmHour
     inc eax
     cmp eax, 24
-    jl NoDayAdjust
+    jl NoAdjust
     sub eax, 24
 
-NoDayAdjust:
+NoAdjust:
     mov alarmHour, eax
     jmp SnoozeDone
     
@@ -405,6 +391,7 @@ ClearSnooze:
     ret
 HandleSnooze ENDP
 
+
 ; =======================
 ; Alarm Check Logic
 ; =======================
@@ -429,7 +416,9 @@ CheckAlarm PROC
     
 NoAlarm:
     ret
+
 CheckAlarm ENDP
+
 
 ; =======================
 ; Trigger Alarm with Sound
